@@ -18,41 +18,72 @@ app.use((req, res, next) => {
     next();
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+// Improved MongoDB connection with proper error handling
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            // Add timeout settings
+            serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+            socketTimeoutMS: 45000, // Close sockets after 45s
+        });
+        
+        console.log(`MongoDB Connected: ${conn.connection.host}`);
+        
+        // Handle connection errors after initial connection
+        mongoose.connection.on('error', err => {
+            console.error('MongoDB connection error:', err);
+        });
 
-// Routes
-app.use('/api/auth', authRoutes);
+        mongoose.connection.on('disconnected', () => {
+            console.log('MongoDB disconnected! Attempting to reconnect...');
+        });
 
-// Test route
-app.get('/test', (req, res) => {
-    res.json({ message: 'Server is working' });
-});
+        mongoose.connection.on('reconnected', () => {
+            console.log('MongoDB reconnected!');
+        });
 
-// Basic route
-app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the Admin Backend API' });
-});
+    } catch (error) {
+        console.error('MongoDB connection error:', error);
+        // Exit process with failure
+        process.exit(1);
+    }
+};
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ message: 'Something went wrong!', error: err.message });
-});
+// Connect to MongoDB before starting the server
+connectDB().then(() => {
+    // Routes
+    app.use('/api/auth', authRoutes);
 
-// Handle 404 routes
-app.use((req, res) => {
-    res.status(404).json({ message: 'Route not found' });
-});
+    // Test route
+    app.get('/test', (req, res) => {
+        res.json({ message: 'Server is working' });
+    });
 
-// Start server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Test the API at http://localhost:${PORT}/test`);
+    // Basic route
+    app.get('/', (req, res) => {
+        res.json({ message: 'Welcome to the Admin Backend API' });
+    });
+
+    // Error handling middleware
+    app.use((err, req, res, next) => {
+        console.error(err.stack);
+        res.status(500).json({ message: 'Something went wrong!', error: err.message });
+    });
+
+    // Handle 404 routes
+    app.use((req, res) => {
+        res.status(404).json({ message: 'Route not found' });
+    });
+
+    // Start server
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log(`Test the API at http://localhost:${PORT}/test`);
+    });
+}).catch(error => {
+    console.error('Failed to connect to MongoDB:', error);
+    process.exit(1);
 });
